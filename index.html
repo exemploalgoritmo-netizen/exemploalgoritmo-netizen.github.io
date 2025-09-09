@@ -1,0 +1,461 @@
+<!DOCTYPE html>
+<html lang="pt-PT">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>O Perigo dos Algoritmos</title>
+
+  <!-- Fontes -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;600;700;800&display=swap" rel="stylesheet">
+
+  <!-- CSS principal -->
+  <link rel="stylesheet" href="css/style.css" />
+
+  <!-- CSS do mini-jogo (escopado, não mexe no resto do site) -->
+  <style>
+    :root{
+      --bg:#f7f8fb; --panel:#fff; --text:#0f172a; --muted:#6b7280; --primary:#2563eb;
+      --safe:#10b981; --danger:#ef4444; --shadow:0 8px 30px rgba(2,6,23,.12); --radius:16px;
+    }
+    .app{width:min(1200px,100%);margin:0 auto;padding:20px}
+    header.jogoHeader{display:flex;gap:16px;align-items:center;justify-content:space-between;margin-bottom:16px}
+    .title{display:flex;align-items:center;gap:14px;padding:12px 16px;background:linear-gradient(135deg,rgba(37,99,235,.08),rgba(124,58,237,.08));border-radius:var(--radius);box-shadow:var(--shadow)}
+    .title h1{font-size:clamp(18px,2.6vw,28px);margin:0;color:#005f8d} /* azul igual ao resto */
+    .controls{display:flex;gap:10px;flex-wrap:wrap}
+    button.btn{border:0;border-radius:12px;padding:10px 14px;font-weight:600;cursor:pointer;background:#eef2ff;color:#1e293b;transition:transform .05s,box-shadow .2s;box-shadow:0 2px 0 rgba(2,6,23,.15)}
+    button.btn:hover{box-shadow:0 4px 14px rgba(2,6,23,.12)}
+    button.btn:active{transform:translateY(1px)}
+    .btn.primary{background:linear-gradient(135deg,#2563eb,#7c3aed);color:#fff}
+    .btn.ghost{background:#f1f5f9}
+    .grid{display:grid;grid-template-columns:2fr 1fr;gap:16px}
+    .panel{background:#fff;border-radius:16px;box-shadow:var(--shadow);padding:14px}
+    .gameWrap{position:relative;padding-top:42px}
+    .lane{position:relative;height:520px;overflow:hidden;border-radius:14px;background:linear-gradient(180deg,rgba(99,102,241,.07),rgba(37,99,235,.05));outline:1px solid rgba(2,6,23,.06)}
+
+    /* Legenda */
+    .legend{position:absolute;top:8px;left:14px;z-index:10;background:#ffffffee;backdrop-filter:blur(4px);border:1px solid #e5e7eb;box-shadow:var(--shadow);border-radius:999px;padding:6px 10px;display:flex;align-items:center;gap:10px;font-size:12px;color:#334155}
+    .dot{width:10px;height:10px;border-radius:999px;display:inline-block}
+    .dot.safe{background:var(--safe)} .dot.danger{background:var(--danger)}
+    .legend .info{margin-left:6px;width:16px;height:16px;line-height:16px;text-align:center;border-radius:999px;border:1px solid #e5e7eb;cursor:default;font-weight:700;font-size:12px;color:#334155;background:#fff;position:relative}
+    .legend .tip{position:absolute;left:50%;bottom:120%;transform:translateX(-50%);white-space:nowrap;background:#111827;color:#fff;padding:6px 8px;border-radius:8px;font-size:12px;box-shadow:var(--shadow);opacity:0;pointer-events:none;transition:opacity .15s}
+    .legend .info:hover .tip{opacity:1}
+
+    /* Cartas */
+    .card{position:absolute;left:14px;right:14px;top:-160px;background:#fff;border-radius:14px;border:1px solid #e5e7eb;box-shadow:var(--shadow);padding:12px;display:grid;gap:10px;grid-template-columns:1fr auto;align-items:center;animation:fall linear forwards}
+    .card.safe{border-left:5px solid var(--safe)} .card.danger{border-left:5px solid var(--danger)}
+    .text{margin:0;line-height:1.35}
+    .actions{display:flex;gap:8px;align-items:center}
+    .actions .act{border:0;padding:8px 10px;border-radius:10px;font-weight:700;cursor:pointer;box-shadow:0 2px 0 rgba(2,6,23,.12)}
+    .act.block{background:#fee2e2;color:#991b1b;border:1px solid #fecaca}
+    .act.allow{background:#dcfce7;color:#065f46;border:1px solid #bbf7d0}
+    @keyframes fall{to{transform:translateY(700px);opacity:.98}}
+    .app.paused .card{animation-play-state:paused !important} /* pausa escopada ao jogo */
+
+    /* Scoreboard + propagação */
+    .stats{display:grid;grid-template-columns:repeat(2,1fr);gap:10px;margin-bottom:12px}
+    .stat{background:#f8fafc;border-radius:12px;padding:10px 12px}
+    .stat .k{font-size:11px;color:var(--muted)} .stat .v{font-weight:800;font-size:18px}
+    .prop{margin-top:6px;background:#f1f5f9;border-radius:999px;height:12px;position:relative;overflow:hidden;border:1px solid #e5e7eb}
+    .prop .bar{position:absolute;inset:0;width:0%;background:linear-gradient(90deg,#ef4444,#f59e0b)}
+    .prop .label{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:11px;color:#0f172a}
+
+    /* Tutorial */
+    .tutorial h2{margin:0 0 8px;font-size:18px;color:var(--primary)}
+    .tutorial ul{margin:0;padding-left:18px;font-size:14px;color:var(--muted)} .tutorial li{margin-bottom:8px}
+    .rightStack{display:grid;gap:16px}
+  </style>
+</head>
+<body>
+
+  <!-- Navbar -->
+  <header class="site-header">
+    <nav class="navbar">
+      <div class="logo">Projeto Final</div>
+      <ul class="nav-links">
+        <li><a href="#inicio">Início</a></li>
+        <li><a href="#sobre">Sobre</a></li>
+        <li><a href="#simulador">Simulador</a></li>
+        <li><a href="#perigo">Perigo</a></li>
+        <li><a href="#contacto">Conclusão e Boas Práticas</a></li>
+      </ul>
+    </nav>
+  </header>
+
+  <!-- HERO -->
+  <section class="hero" id="inicio">
+    <div class="hero-inner">
+      <div class="hero-content">
+        <h1>O PERIGO DOS ALGORITMOS</h1>
+        <p class="hero-sub">Descobre como os algoritmos moldam o teu mundo digital.</p>
+        <div class="meta">
+          <span class="badge">Pedro Oliveira</span>
+          <span class="badge">Daniel Afonso</span>
+          <span class="badge">PAP · Cibersegurança</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- INTRODUÇÃO / INFORMAÇÃO -->
+  <section id="sobre" class="content section">
+    <h2 class="marker soft">O que são algoritmos?</h2>
+
+    <div class="frame frame--soft">
+      <p>Algoritmos são um conjunto de instruções que ensinam as máquinas a agir de determinada forma para alcançar um objetivo.</p>
+      <p>No mundo online, organizam, classificam e sugerem conteúdos em redes sociais, motores de busca e plataformas de vídeo. De forma simples, podem ser vistos como “receitas”: cada passo numa sequência resulta na apresentação de um vídeo, na sugestão de um produto ou na ordem em que as notícias são mostradas.</p>
+
+      <h3 class="marker soft left">Como os algoritmos trabalham?</h3>
+      <p>Sem nos apercebermos, utilizamos centenas de algoritmos todos os dias. Nos sistemas de classificação automatizada, os algoritmos tentam compreender o teu perfil através das ações que realizas na internet:</p>
+      <ul class="bullets">
+        <li>Publicações a que deste gosto ou comentaste;</li>
+        <li>Conteúdos que viste até ao fim e quanto tempo ficaste em cada um;</li>
+        <li>Contas que segues ou com as quais interages com mais frequência.</li>
+      </ul>
+      <p>Com base nestes dados, analisam padrões e <strong>preveem o que te pode interessar</strong> para personalizar a experiência.</p>
+      <p><strong>Exemplo:</strong> no Instagram, se interages frequentemente com contas de receitas, vais começar a receber mais publicações desse tema. Em pouco tempo, o feed pode tornar-se quase exclusivamente focado nisso, criando uma <em>bolha</em> de conteúdo.</p>
+
+      <h3 class="marker soft left">O lado invisível</h3>
+      <p>Os algoritmos são úteis, mas não são neutros. Normalmente são desenhados para aumentar a interação e o tempo de permanência na plataforma. Isso pode gerar:</p>
+      <ul class="bullets">
+        <li><strong>Bolhas de informação:</strong> consomes apenas conteúdos que reforçam as tuas crenças.</li>
+        <li><strong>Dependência da plataforma:</strong> mecanismos que te incentivam a voltar constantemente.</li>
+        <li><strong>Manipulação de informação:</strong> conteúdos falsos ou perigosos podem ganhar destaque por gerarem mais interação.</li>
+      </ul>
+
+      <h3 class="marker soft left">O impacto dos algoritmos na Cibersegurança</h3>
+      <p>Quando algoritmos determinam o que vemos e influenciam decisões, tornam-se uma ferramenta poderosa para o bem e para o mal. Exemplos:</p>
+      <ul class="bullets">
+        <li><strong>Disseminação de desinformação</strong> (notícias falsas, teorias da conspiração);</li>
+        <li><strong>Promoção de golpes</strong> (ex.: esquemas de investimento, apps maliciosas);</li>
+        <li><strong>Recolha abusiva de dados pessoais</strong> a partir das tuas interações.</li>
+      </ul>
+      <p>Proteger-te no mundo digital não é só ter <em>firewall</em> e antivírus: é também entender os mecanismos que controlam a informação e os riscos associados ao uso diário das plataformas.</p>
+    </div>
+  </section>
+
+  <!-- MINI-JOGO -->
+  <section id="simulador" class="content section">
+    <div class="app" id="gameApp">
+      <header class="jogoHeader">
+        <div class="title"><h1>Perigo dos Algoritmos — Mini-Jogo</h1></div>
+        <div class="controls">
+          <button class="btn primary" id="startBtn">▶ Iniciar</button>
+          <button class="btn" id="pauseBtn">⏸ Pausar</button>
+          <button class="btn ghost" id="resetBtn">↻ Reiniciar</button>
+        </div>
+      </header>
+
+      <div class="grid">
+        <!-- Painel do jogo -->
+        <section class="panel gameWrap">
+          <div class="legend" role="note" aria-label="Legenda de cores">
+            <span><span class="dot safe" aria-hidden="true"></span> verde = verídico/seguro</span>
+            <span><span class="dot danger" aria-hidden="true"></span> vermelho = falso/nocivo</span>
+            <span class="info" aria-label="Sobre as cores">i
+              <span class="tip" role="tooltip">A cor na margem esquerda indica a avaliação do conteúdo: verde (legítimo) • vermelho (perigoso).</span>
+            </span>
+          </div>
+          <div class="lane" id="lane" aria-live="polite" aria-label="Pista de publicações"></div>
+        </section>
+
+        <!-- Scoreboard + tutorial -->
+        <div class="rightStack">
+          <aside class="panel">
+            <div class="stats">
+              <div class="stat"><div class="k">Pontuação</div><div class="v" id="score">0</div></div>
+              <div class="stat"><div class="k">Precisão</div><div class="v" id="accuracy">—</div></div>
+              <div class="stat"><div class="k">Perigos deixados passar</div><div class="v" id="misses">0</div></div>
+              <div class="stat"><div class="k">Alcance (est.)</div><div class="v" id="reach">0</div></div>
+            </div>
+            <div class="prop" aria-label="Barra de propagação do algoritmo">
+              <div class="bar" id="propBar"></div>
+              <div class="label" id="propLabel">0%</div>
+            </div>
+            <p style="margin:10px 0 0;font-size:12px;color:#6b7280">
+              Se a propagação chegar a <strong>100%</strong>, o algoritmo vence.
+            </p>
+          </aside>
+
+          <aside class="panel tutorial">
+            <h2>Como jogar</h2>
+            <ul>
+              <li>Publicações caem pelo ecrã.</li>
+              <li><strong>Bloqueia</strong> as nocivas; <strong>Permite</strong> as legítimas.</li>
+              <li>Atalhos: <strong>A/←</strong> bloqueia, <strong>D/→</strong> permite.</li>
+              <li>Até <strong>2 cartas</strong> em simultâneo, sempre separadas.</li>
+              <li><strong>Pausa</strong> congela as cartas onde estiverem.</li>
+            </ul>
+          </aside>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- PERIGO (título + texto + vídeo dentro da moldura) -->
+  <section id="perigo" class="content section">
+    <div class="frame perigo-frame">
+      <h2 class="marker">Onde está o “PERIGO”</h2>
+      <p class="muted">
+        O mesmo mecanismo que te mostra conteúdos “relevantes” pode, sem quereres, empurrar-te para
+        nichos onde a manipulação é mais fácil. Isso abre espaço para <strong>falsas promessas</strong>:
+        “cryptos milagrosas” que acabam em <em>rug pull</em>, supostos “bugs” no casino onde o criador de
+        conteúdo só ganha com <strong>links de afiliado</strong>, e outras estratégias para te levar a clicar, depositar
+        e perder dinheiro.
+      </p>
+
+      <ul class="bullets">
+        <li><strong>Criptos milagrosas / memecoins:</strong> promessas de x100 que acabam em <em>rug pull</em> (os criadores esvaziam a liquidez e desaparecem).</li>
+        <li><strong>“Bugs” no casino / roletas viciadas:</strong> vídeos com “estratégias secretas” que só te enviam para links de afiliado.</li>
+      </ul>
+
+      <div class="callout" style="margin-top:10px">
+        <strong>O que vamos demonstrar no vídeo:</strong> como o algoritmo te puxa para o nicho das
+        cryptos milagrosas desde o primeiro clique às recomendações cada vez mais agressivas.
+      </div>
+
+      <h3 class="marker left" style="margin-top:18px">Experiência: como o algoritmo te puxa para nichos</h3>
+      <div class="video-wrap" style="margin-top:10px">
+        <iframe
+    src="https://www.youtube.com/embed/yzaU_tE6TVU?rel=0"
+    title="Vídeo explicativo — mecanismo do algoritmo"
+    loading="lazy"
+    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+    referrerpolicy="strict-origin-when-cross-origin"
+    allowfullscreen>
+  </iframe>
+</div>
+    </div>
+  </section>
+
+  <!-- CONCLUSÃO -->
+  <section id="contacto" class="content section">
+  <h2 class="marker">Conclusão e Boas Práticas</h2>
+
+  <div style="display: flex; align-items: flex-start; justify-content: space-between; gap: 60px;">
+    
+    <!-- Texto à esquerda -->
+    <div style="flex: 1; max-width: 60%;">
+      <p>
+        Proteger a nossa presença digital exige <strong>consciência e hábitos seguros</strong> no dia a dia.
+        Reduzir interações com conteúdos sensacionalistas e falsos ajuda a limitar a propagação de
+        desinformação e a evitar golpes online. É igualmente importante rever e limpar regularmente
+        os interesses e seguidores nas redes sociais, mantendo apenas conexões de confiança.
+      </p>
+      <p>
+        Utilizar <strong>perfis separados</strong> para lazer, estudo e trabalho garante uma melhor
+        organização e reduz riscos em caso de ataque. A segurança deve ser reforçada com
+        <strong>autenticação de dois fatores (2FA)</strong> e <strong>palavras-passe únicas</strong>,
+        idealmente geridas por um gestor seguro.
+      </p>
+      <p>
+        Por fim, lembra-te: <strong>desconfia sempre de “ganhos fáceis”</strong> e ofertas que parecem
+        boas demais para ser verdade. A tua atenção e espírito crítico são as melhores defesas contra
+        as ameaças digitais.
+      </p>
+    </div>
+
+    <!-- Imagem à direita -->
+    <div style="flex: 0 0 250px; text-align: center; margin-left: 30px;">
+      <img src="img/boas-praticas.png" alt="Boas práticas de cibersegurança" 
+           style="max-width: 100%; height: auto; border-radius: 8px;">
+    </div>
+
+  </div>
+</section>
+
+  <!-- Template da carta do jogo -->
+  <template id="cardTpl">
+    <article class="card" data-dangerous="false">
+      <p class="text"></p>
+      <div class="actions">
+        <button class="act block" aria-label="Bloquear nocivo">Bloquear</button>
+        <button class="act allow" aria-label="Permitir seguro">Permitir</button>
+      </div>
+    </article>
+  </template>
+
+  <!-- JS do mini-jogo (escopada ao .app) -->
+  <script>
+  (function(){
+    const appEl  = document.getElementById('gameApp');
+    const lane   = document.getElementById('lane');
+    const tpl    = document.getElementById('cardTpl');
+
+    const startBtn = document.getElementById('startBtn');
+    const pauseBtn = document.getElementById('pauseBtn');
+    const resetBtn = document.getElementById('resetBtn');
+
+    // HUD
+    const scoreEl = document.getElementById('score');
+    const accEl   = document.getElementById('accuracy');
+    const missEl  = document.getElementById('misses');
+    const reachEl = document.getElementById('reach');
+    const propBar = document.getElementById('propBar');
+    const propLbl = document.getElementById('propLabel');
+
+    // Conteúdos 
+   const ITEMS = [
+  //  Conteúdos perigosos
+  { t: "Passatempo relâmpago: ganha um iPhone se preencheres este formulário!", d: true },
+  { t: "Vídeo mostra político a admitir fraude nas eleições (deepfake).", d: true },
+  { t: "Nova criptomoeda vai multiplicar o valor por 100 vezes numa semana, compra já!", d: true },
+  { t: "Bug no casino online: aposta sempre no vermelho e ganha garantido!", d: true },
+  { t: "Partilha esta publicação e recebe 500€ imediatamente!", d: true },
+  { t: "Oferta exclusiva: envia 0,01 BTC e recebe 0,1 BTC de volta!", d: true },
+  { t: "Nova vacina provoca doenças raras, vê as provas aqui!", d: true },
+  { t: "Investimento secreto usado por milionários – inscreve-te já!", d: true },
+  { t: "Grupo privado no Telegram com dicas 100% seguras para ganhar nas apostas!", d: true },
+  { t: "Este truque caseiro cura qualquer dor em poucos segundos!", d: true },
+  { t: "Bug descoberto no multibanco permite levantar dinheiro ilimitado!", d: true },
+  { t: "Promoção imperdível! Instala esta aplicação e ganha saldo grátis!", d: true },
+  { t: "Atenção! Governo vai bloquear contas bancárias amanhã, transfere já o teu dinheiro!", d: true },
+  { t: "Partilha este link para ajudar uma criança que precisa urgentemente de uma cirurgia!", d: true },
+  { t: "Apostas desportivas com resultados garantidos a 100%! Junta-te já!", d: true },
+
+  // Conteúdos seguros
+  { t: "Nova loja no bairro partilha horários e localização.", d: false },
+  { t: "Artigo de jornal fiável sobre segurança digital.", d: false },
+  { t: "Receita tradicional de bolo de chocolate passo a passo.", d: false },
+  { t: "Evento cultural gratuito na tua cidade este fim de semana.", d: false },
+  { t: "Dicas para melhorar a produtividade no trabalho remoto.", d: false },
+  { t: "Campanha de recolha de alimentos para famílias carenciadas.", d: false },
+  { t: "Guia para configurar autenticação de dois fatores (2FA).", d: false },
+  { t: "Artigo sobre os benefícios de uma boa noite de sono.", d: false },
+  { t: "Sugestões de livros para ler nas férias.", d: false },
+  { t: "Nova atualização do teu jogo favorito com melhorias.", d: false },
+  { t: "Lista de aplicações recomendadas para aprender línguas.", d: false },
+  { t: "Notícia sobre a previsão do tempo para os próximos dias.", d: false },
+  { t: "Guia de segurança para compras online.", d: false },
+  { t: "Informações sobre vacinas disponíveis no centro de saúde local.", d: false },
+  { t: "Anúncio de novas linhas de transporte público na cidade.", d: false }
+];
+
+    // Estado
+    let running=false, paused=false, spawnTimer=null, lastSpawnAt=0;
+    let score=0, correct=0, total=0, misses=0, propagation=0, reach=0, algoBoost=1;
+
+    // Config
+    const BASE_DURATION=12000;  // 12s por carta
+    const MIN_GAP_MS=4500;      // separação mínima
+    const MAX_CARDS=2;          // até 2 cartas ao mesmo tempo
+
+    // Eventos
+    startBtn.addEventListener('click', start);
+    pauseBtn.addEventListener('click', togglePause);
+    resetBtn.addEventListener('click', reset);
+    window.addEventListener('keydown', onKey);
+
+    function start(){
+      if(running) return;
+      running = true; paused = false; lastSpawnAt = 0;
+      appEl.classList.remove('paused');
+      tickSpawn();
+      spawnTimer = setInterval(tickSpawn, 200);
+      updateHUD();
+    }
+    function togglePause(){
+      if(!running) return;
+      paused = !paused;
+      appEl.classList.toggle('paused', paused);
+    }
+    function reset(){
+      running=false; paused=false; lastSpawnAt=0;
+      appEl.classList.remove('paused');
+      if(spawnTimer){ clearInterval(spawnTimer); spawnTimer=null; }
+      if(lane) lane.innerHTML='';
+      score=0; correct=0; total=0; misses=0; propagation=0; reach=0; algoBoost=1;
+      updateHUD();
+    }
+
+    function tickSpawn(){
+      if(!running || paused) return;
+      if(lane.childElementCount >= MAX_CARDS) return;
+      const now = Date.now();
+      if(now - lastSpawnAt < MIN_GAP_MS) return;
+      spawnCard();
+      lastSpawnAt = now;
+    }
+
+    function spawnCard(){
+      const data = ITEMS[Math.floor(Math.random()*ITEMS.length)];
+      const node = tpl.content.firstElementChild.cloneNode(true);
+      node.querySelector('.text').textContent = data.t;
+      node.classList.add(data.d ? 'danger' : 'safe');
+      node.dataset.dangerous = data.d ? 'true' : 'false';
+      node.style.animationDuration = BASE_DURATION + 'ms';
+
+      node.querySelector('.act.block').addEventListener('click', (e)=>{ e.stopPropagation(); resolve(node,'block'); });
+      node.querySelector('.act.allow').addEventListener('click', (e)=>{ e.stopPropagation(); resolve(node,'allow'); });
+
+      node.addEventListener('animationend', ()=> resolve(node,'allow')); // se “cair”, conta como permitir
+      lane.appendChild(node);
+    }
+
+    function resolve(node, action){
+      if(node.dataset.resolved==='1') return;
+      node.dataset.resolved='1';
+      total++;
+
+      const isDanger = node.dataset.dangerous === 'true';
+      let delta = 0;
+
+      if(action==='block'){
+        if(isDanger){ correct++; delta = +100; propagation = Math.max(0, propagation - 2); }
+        else        { delta = -50; }
+      } else { // allow
+        if(isDanger){
+          delta = -100; misses++;
+          const bump = 14 + Math.floor(Math.random()*7); // +14–20%
+          propagation = Math.min(100, propagation + bump);
+          const reached = Math.round((5000 + Math.random()*7000) * algoBoost);
+          reach += reached;
+          algoBoost = Math.min(6, +(algoBoost * 1.14).toFixed(2));
+        } else {
+          correct++; delta = +50;
+        }
+      }
+      score += delta;
+
+      node.style.transition = 'transform .18s ease, opacity .18s ease';
+      node.style.transform  = 'translateY(-12px) scale(.98)';
+      node.style.opacity    = '.2';
+      setTimeout(()=> node.remove(), 180);
+
+      updateHUD();
+      if(propagation >= 100) gameOver();
+    }
+
+    function updateHUD(){
+      scoreEl.textContent = String(score);
+      const acc = total ? Math.round((correct/total)*100) : 0;
+      accEl.textContent   = total ? acc + '%' : '—';
+      missEl.textContent  = String(misses);
+      reachEl.textContent = reach.toLocaleString('pt-PT');
+      propBar.style.width = Math.min(100, propagation) + '%';
+      propLbl.textContent = Math.min(100, propagation) + '%';
+    }
+
+    function gameOver(){
+      running=false;
+      if(spawnTimer){ clearInterval(spawnTimer); spawnTimer=null; }
+      alert(`O algoritmo venceu! Pontuação: ${score} | Precisão: ${accEl.textContent}`);
+    }
+
+    function onKey(e){
+      if(!running || paused) return;
+      const card = lane.querySelector('.card'); // atua na carta mais alta
+      if(!card) return;
+      if(e.key==='a' || e.key==='A' || e.key==='ArrowLeft')  card.querySelector('.act.block')?.click();
+      if(e.key==='d' || e.key==='D' || e.key==='ArrowRight') card.querySelector('.act.allow')?.click();
+    }
+  })();
+  </script>
+
+  <footer class="site-footer">
+    Projeto final · Técnico Especialista em Cibersegurança<br>
+    Pedro Oliveira &amp; Daniel Afonso
+  </footer>
+</body>
+</html>
